@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 make_replay_files.py
 
@@ -8,6 +7,16 @@ This script is OFFLINE (no streaming) and safe to re-run.
 
 import argparse
 import logging
+import os
+
+# ── Windows: set Hadoop/Java env vars before PySpark imports ─────────────────
+os.environ.setdefault("JAVA_HOME",   r"C:\Program Files\Eclipse Adoptium\jdk-11.0.30.7-hotspot")
+os.environ.setdefault("HADOOP_HOME", r"C:\hadoop")
+os.environ["PATH"] = os.environ["HADOOP_HOME"] + r"\bin" + os.pathsep + os.environ.get("PATH", "")
+
+import findspark
+findspark.init()
+
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, to_date, date_trunc
 
