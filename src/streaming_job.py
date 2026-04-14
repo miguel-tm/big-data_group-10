@@ -20,7 +20,7 @@ import findspark
 findspark.init()
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, window, sum as _sum
+from pyspark.sql.functions import col, count, window, sum as _sum
 
 
 def parse_args():
@@ -30,6 +30,7 @@ def parse_args():
     p.add_argument("--checkpoint", required=True, help="Checkpoint directory")
     p.add_argument("--window-size", default="1 hour")
     p.add_argument("--trigger", default="10 seconds")
+    p.add_argument("--silver", required=True, help="Path to Silver Parquet (for schema inference)")
     return p.parse_args()
 
 
@@ -38,11 +39,16 @@ def main():
 
     spark = SparkSession.builder.appName("StreamingHourlyWindows").getOrCreate()
 
-    schema = spark.read.parquet(args.input).schema
+    # Before (fragile — fails if stream_in is empty):
+    # schema = spark.read.parquet(args.input).schema
+
+    # After (robust — Silver is always populated):
+    schema = spark.read.parquet(args.silver).schema
 
     stream = (
         spark.readStream
         .schema(schema)
+        .option("pathGlobFilter", "*.parquet")
         .parquet(args.input)
     )
 
@@ -51,11 +57,13 @@ def main():
         .withWatermark("CRASH_DATE", "1 hour")
         .groupBy(window(col("CRASH_DATE"), args.window_size))
         .agg(
+            count("*").alias("crashes"),
             _sum("INJURIES_TOTAL").alias("injuries_total"),
             _sum("INJURIES_FATAL").alias("injuries_fatal"),
         )
-        .withColumnRenamed("window.start", "window_start")
-        .withColumnRenamed("window.end", "window_end")
+        .withColumn("window_start", col("window.start"))
+        .withColumn("window_end",   col("window.end"))
+        .drop("window")
     )
 
     query = (
